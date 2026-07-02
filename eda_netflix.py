@@ -1,116 +1,103 @@
 import os
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 
 # --- НАСТРОЙКА ПУТЕЙ ---
-# Указываем точный путь к твоему файлу в папке data/raw/
 csv_path = 'C:/Users/eaman/Downloads/files/netflix-project/netflix-project/data/raw/netflix_titles.csv'
-output_dir = '../img/img/'
+output_dir = 'C:/Users/eaman/Downloads/files/netflix-project/netflix-project/img/img/'
 os.makedirs(output_dir, exist_ok=True)
 
 # --- ЗАГРУЗКА ДАННЫХ ---
-try:
-    df = pd.read_csv(csv_path)
-    print(f"[ОК] Датасет успешно загружен! Строк: {df.shape[0]}")
-except FileNotFoundError:
-    print(f"[ОШИБКА] Не найден файл по пути: {csv_path}")
-    print("Проверь, чтобы файл назывался именно netflix_titles.csv (с расширением .csv)")
-    exit()
-
-# Настройка стилей для графиков
-sns.set_theme(style="whitegrid")
-plt.rcParams['figure.figsize'] = (10, 6)
+df = pd.read_csv(csv_path)
+print(f"[ОК] Датасет загружен. Строк: {df.shape[0]}")
 
 # ==============================================================================
-# ЭТАП 1-2: ВИЗУАЛИЗАЦИЯ И АНАЛИЗ (Недели 1-2)
+# 8.3 МАТЕМАТИКО-СТАТИСТИЧЕСКИЙ АНАЛИЗ
 # ==============================================================================
-print("\n--- ГЕНЕРАЦИЯ ГРАФИКОВ ---")
+print("\n--- ЭТАП 1: МАТЕМАТИКО-СТАТИСТИЧЕСКИЙ АНАЛИЗ ---")
 
-# 1. График пропущенных значений
-missing_data = df.isnull().mean() * 100
-missing_data = missing_data[missing_data > 0].sort_values(ascending=False)
-if not missing_data.empty:
-    plt.figure(figsize=(10, 5))
-    ax = sns.barplot(x=missing_data.values, y=missing_data.index, color='#E50914')
-    plt.title('Пропущенные значения по столбцам — Netflix Dataset', fontsize=14, fontweight='bold')
-    plt.xlim(0, 30)
-    for i, v in enumerate(missing_data.values):
-        ax.text(v + 0.5, i, f"{v:.2f}%", va='center', fontweight='bold')
-    plt.savefig(os.path.join(output_dir, 'missing_values.png'), bbox_inches='tight', dpi=300)
-    plt.close()
-print("[+] График пропусков сохранен в папки img/img/missing_values.png")
+# Описательная статистика для числового признака (release_year)
+stats = df['release_year'].describe()
+print("\n[Описательная статистика для release_year]:")
+print(stats)
 
-# 2. Круговая диаграмма типов контента
-if 'type' in df.columns:
-    plt.figure(figsize=(8, 6))
-    type_counts = df['type'].value_counts()
-    plt.pie(type_counts, labels=type_counts.index, autopct='%1.1f%%', 
-            colors=['#E50914', '#222222'], startangle=90, 
-            explode=(0.05, 0), textprops={'fontsize': 12, 'fontweight': 'bold'})
-    plt.title('Доля фильмов и сериалов на платформе', fontsize=14, fontweight='bold')
-    plt.savefig(os.path.join(output_dir, 'type_distribution.png'), bbox_inches='tight', dpi=300)
-    plt.close()
-print("[+] Круговая диаграмма типов сохранена в img/img/type_distribution.png")
+# Выбросы: Строим Boxplot для release_year
+plt.figure(figsize=(8, 4))
+sns.boxplot(x=df['release_year'], color='#E50914')
+plt.title('Анализ выбросов: Год выпуска контента (Boxplot)', fontsize=12, fontweight='bold')
+plt.savefig(os.path.join(output_dir, 'boxplot_release_year.png'), bbox_inches='tight', dpi=300)
+plt.close()
+print("[+] График выбросов boxplot_release_year.png сохранен.")
 
-# 3. Топ-10 жанров
-if 'listed_in' in df.columns:
-    plt.figure(figsize=(12, 6))
-    genres_series = df['listed_in'].str.split(', ').explode()
-    top_genres = genres_series.value_counts().head(10)
-    sns.barplot(x=top_genres.values, y=top_genres.index, palette='Reds_r')
-    plt.title('Топ-10 популярных жанров на Netflix', fontsize=14, fontweight='bold')
-    for i, v in enumerate(top_genres.values):
-        plt.text(v + 10, i, str(v), va='center', fontweight='bold')
-    plt.savefig(os.path.join(output_dir, 'top_genres_horizontal.png'), bbox_inches='tight', dpi=300)
-    plt.close()
-print("[+] График топ-10 жанров сохранен в img/img/top_genres_horizontal.png")
-
+# Распределение целевой переменной (type)
+plt.figure(figsize=(6, 4))
+sns.countplot(x='type', data=df, palette=['#E50914', '#222222'])
+plt.title('Распределение целевой переменной (Type)', fontsize=12, fontweight='bold')
+plt.savefig(os.path.join(output_dir, 'target_distribution.png'), bbox_inches='tight', dpi=300)
+plt.close()
 
 # ==============================================================================
-# ЭТАП 3: МАШИННОЕ ОБУЧЕНИЕ (Неделя 3)
+# 8.5 и 8.7 ОБУЧЕНИЕ И ВИЗУАЛИЗАЦИЯ ML-МОДЕЛИ
 # ==============================================================================
-print("\n--- ЭТАП 3: ОБУЧЕНИЕ ML-МОДЕЛИ ---")
+print("\n--- ЭТАП 2: ЧЕСТНОЕ ОБУЧЕНИЕ ML-МОДЕЛИ ---")
 
-# Отбираем нужные колонки и удаляем строки с пропусками в них
-df_ml = df[['type', 'description', 'listed_in']].dropna()
+# Чтобы избежать Data Leakage (100% точности), обучаемся ТОЛЬКО на описании (description)
+df_ml = df[['type', 'description']].dropna()
 
-# Объединяем жанры и описание в единый текст для обучения модели
-df_ml['text_features'] = df_ml['listed_in'] + " " + df_ml['description']
+X = df_ml['description'] # Признак: текст описания
+y = df_ml['type']        # Целевая переменная: Movie или TV Show
 
-X = df_ml['text_features']
-y = df_ml['type']
-
-# Делим выборку на обучение (80%) и тест (20%) с сохранением пропорций классов
+# Разделение данных 80/20
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
-print(f"Размер обучающей выборки: {X_train.shape[0]} строк")
-print(f"Размер тестовой выборки: {X_test.shape[0]} строк")
-
-# Превращаем текст в набор чисел (Векторизация TF-IDF)
-print("Преобразование текстовых признаков в векторы (TF-IDF)...")
-tfidf = TfidfVectorizer(max_features=3000, stop_words='english')
+# Векторизация TF-IDF
+tfidf = TfidfVectorizer(max_features=2000, stop_words='english')
 X_train_tfidf = tfidf.fit_transform(X_train)
 X_test_tfidf = tfidf.transform(X_test)
 
-# Создаем и обучаем модель Случайного Леса (Random Forest)
-print("Обучение модели Random Forest Classifier (может занять пару секунд)...")
+# Обучение Random Forest
 model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
 model.fit(X_train_tfidf, y_train)
 
-# Делаем предсказание на тестовых данных
+# Предсказание
 y_pred = model.predict(X_test_tfidf)
 
-# Считаем и выводим метрики эффективности
+# Метрики качества
 accuracy = accuracy_score(y_test, y_pred)
 print("\n================ МЕТРИКИ ML МОДЕЛИ ================")
 print(f"Общая точность модели (Accuracy): {accuracy * 100:.2f}%")
-print("\nДетальный отчет по классам (Classification Report):")
+print("\nДетальный отчет (Classification Report):")
 print(classification_report(y_test, y_pred))
 print("====================================================")
 
-print("\n[УСПЕХ] Вся программа (Недели 1-3) успешно выполнена!")
+# Визуализация результатов: Матрица ошибок (Confusion Matrix)
+cm = confusion_matrix(y_test, y_pred)
+plt.figure(figsize=(6, 5))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Reds', xticklabels=model.classes_, yticklabels=model.classes_)
+plt.title('Матрица ошибок (Confusion Matrix)', fontsize=12, fontweight='bold')
+plt.ylabel('Реальные классы')
+plt.xlabel('Предсказанные моделью')
+plt.savefig(os.path.join(output_dir, 'confusion_matrix.png'), bbox_inches='tight', dpi=300)
+plt.close()
+print("[+] Матрица ошибок confusion_matrix.png сохранена.")
+
+# Важность признаков (Feature Importance - топ слов)
+importances = model.feature_importances_
+indices = np.argsort(importances)[-10:]
+words = np.array(tfidf.get_feature_names_out())[indices]
+
+plt.figure(figsize=(10, 5))
+plt.barh(range(len(indices)), importances[indices], color='#E50914')
+plt.yticks(range(len(indices)), words, fontsize=11)
+plt.title('Топ-10 самых важных слов для определения типа контента', fontsize=12, fontweight='bold')
+plt.savefig(os.path.join(output_dir, 'feature_importance.png'), bbox_inches='tight', dpi=300)
+plt.close()
+print("[+] График важности признаков feature_importance.png сохранен.")
+
+print("\n[УСПЕХ] Скрипт успешно выполнил все математические и ML требования преподавателя!")
