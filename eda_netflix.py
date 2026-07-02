@@ -35,9 +35,9 @@ plt.savefig(os.path.join(output_dir, 'boxplot_release_year.png'), bbox_inches='t
 plt.close()
 print("[+] График выбросов boxplot_release_year.png сохранен.")
 
-# Распределение целевой переменной (type)
+# Распределение целевой переменной (type) без предупреждения FutureWarning
 plt.figure(figsize=(6, 4))
-sns.countplot(x='type', data=df, palette=['#E50914', '#222222'])
+sns.countplot(x='type', hue='type', data=df, palette=['#E50914', '#222222'], legend=False)
 plt.title('Распределение целевой переменной (Type)', fontsize=12, fontweight='bold')
 plt.savefig(os.path.join(output_dir, 'target_distribution.png'), bbox_inches='tight', dpi=300)
 plt.close()
@@ -45,27 +45,27 @@ plt.close()
 # ==============================================================================
 # 8.5 и 8.7 ОБУЧЕНИЕ И ВИЗУАЛИЗАЦИЯ ML-МОДЕЛИ
 # ==============================================================================
-print("\n--- ЭТАП 2: ЧЕСТНОЕ ОБУЧЕНИЕ ML-МОДЕЛИ ---")
+print("\n--- ЭТАП 2: СБАЛАНСИРОВАННОЕ ОБУЧЕНИЕ ML-МОДЕЛИ ---")
 
-# Чтобы избежать Data Leakage (100% точности), обучаемся ТОЛЬКО на описании (description)
+# Извлекаем текст и целевую переменную
 df_ml = df[['type', 'description']].dropna()
 
-X = df_ml['description'] # Признак: текст описания
-y = df_ml['type']        # Целевая переменная: Movie или TV Show
+X = df_ml['description']
+y = df_ml['type']
 
-# Разделение данных 80/20
+# Разделение выборки 80/20 со стратификацией
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
-# Векторизация TF-IDF
-tfidf = TfidfVectorizer(max_features=2000, stop_words='english')
+# Векторизация: используем n-граммы (сочетания из 1 и 2 слов) для улучшения контекста
+tfidf = TfidfVectorizer(max_features=3000, stop_words='english', ngram_range=(1, 2))
 X_train_tfidf = tfidf.fit_transform(X_train)
 X_test_tfidf = tfidf.transform(X_test)
 
-# Обучение Random Forest
-model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+# Обучаем Random Forest со сбалансированными весами классов
+model = RandomForestClassifier(n_estimators=150, random_state=42, n_jobs=-1, class_weight='balanced')
 model.fit(X_train_tfidf, y_train)
 
-# Предсказание
+# Получение прогнозов
 y_pred = model.predict(X_test_tfidf)
 
 # Метрики качества
@@ -85,7 +85,7 @@ plt.ylabel('Реальные классы')
 plt.xlabel('Предсказанные моделью')
 plt.savefig(os.path.join(output_dir, 'confusion_matrix.png'), bbox_inches='tight', dpi=300)
 plt.close()
-print("[+] Матрица ошибок confusion_matrix.png сохранена.")
+print("[+] Матрица ошибок confusion_matrix.png успешно обновлена.")
 
 # Важность признаков (Feature Importance - топ слов)
 importances = model.feature_importances_
@@ -95,9 +95,9 @@ words = np.array(tfidf.get_feature_names_out())[indices]
 plt.figure(figsize=(10, 5))
 plt.barh(range(len(indices)), importances[indices], color='#E50914')
 plt.yticks(range(len(indices)), words, fontsize=11)
-plt.title('Топ-10 самых важных слов для определения типа контента', fontsize=12, fontweight='bold')
+plt.title('Топ-10 самых важных признаков/слов в описании', fontsize=12, fontweight='bold')
 plt.savefig(os.path.join(output_dir, 'feature_importance.png'), bbox_inches='tight', dpi=300)
 plt.close()
-print("[+] График важности признаков feature_importance.png сохранен.")
+print("[+] График важности признаков feature_importance.png успешно обновлен.")
 
-print("\n[УСПЕХ] Скрипт успешно выполнил все математические и ML требования преподавателя!")
+print("\n[УСПЕХ] Сбалансированный скрипт успешно выполнен без предупреждений!")
